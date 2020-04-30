@@ -1,8 +1,6 @@
 from dataclasses import dataclass
 from typing import Optional
-from warnings import warn
 
-import numpy
 import torch
 from pytorch_trainer import report
 from torch import nn, Tensor

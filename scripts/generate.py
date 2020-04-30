@@ -26,10 +26,10 @@ def _get_predictor_model_path(
         prefix: str = 'predictor_',
 ):
     if iteration is None:
-        paths = model_dir.glob(prefix + '*.npz')
+        paths = model_dir.glob(prefix + '*.pth')
         model_path = list(sorted(paths, key=_extract_number))[-1]
     else:
-        model_path = model_dir / (prefix + '{}.npz'.format(iteration))
+        model_path = model_dir / (prefix + '{}.pth'.format(iteration))
         assert model_path.exists()
     return model_path
 

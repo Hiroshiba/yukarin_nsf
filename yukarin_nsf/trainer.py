@@ -95,13 +95,13 @@ def create_trainer(
     generator = Generator(config=config, predictor=networks.predictor, use_gpu=True)
     generate_evaluator = GenerateEvaluator(
         generator=generator,
-        time_length=config.dataset.evaluate_time_length,
-        local_padding_time_length=config.dataset.evaluate_local_padding_time_length,
+        time_length=config.dataset.evaluate_time_second,
+        local_padding_time_length=config.dataset.evaluate_local_padding_time_second,
     )
     ext = extensions.Evaluator(test_eval_iter, generate_evaluator, device=device)
     trainer.extend(ext, name='eval', trigger=trigger_snapshot)
 
-    ext = extensions.snapshot_object(networks.predictor, filename='predictor_{.updater.iteration}.npz')
+    ext = extensions.snapshot_object(networks.predictor, filename='predictor_{.updater.iteration}.pth')
     trainer.extend(ext, trigger=trigger_snapshot)
 
     trainer.extend(extensions.FailOnNonNumber(), trigger=trigger_log)

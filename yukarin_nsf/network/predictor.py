@@ -21,10 +21,13 @@ class Predictor(nn.Module):
         self.local_size = local_size
         self.local_scale = local_scale
 
-        self.speaker_embedder = nn.Embedding(
-            num_embeddings=speaker_size,
-            embedding_dim=speaker_embedding_size,
-        )
+        if self.with_speaker:
+            self.speaker_embedder = nn.Embedding(
+                num_embeddings=speaker_size,
+                embedding_dim=speaker_embedding_size,
+            )
+        else:
+            self.speaker_embedder = None
 
         self.local_encoder = nn.GRU(
             input_size=local_size + (speaker_embedding_size if self.with_speaker else 0),

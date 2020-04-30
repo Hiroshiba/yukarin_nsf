@@ -6,7 +6,6 @@ import torch
 from acoustic_feature_extractor.data.wave import Wave
 
 from yukarin_nsf.config import Config
-from yukarin_nsf.dataset import generate_source
 from yukarin_nsf.network.predictor import Predictor, create_predictor
 
 

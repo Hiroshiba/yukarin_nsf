@@ -1,6 +1,7 @@
 numpy
 torch
 tqdm
+retry
 pytest
 pyyaml
 tensorboardX

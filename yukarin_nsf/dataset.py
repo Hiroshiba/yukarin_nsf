@@ -91,7 +91,7 @@ class BaseWaveDataset(Dataset):
         l_sl = sl // l_scale
 
         for _ in range(10000):
-            l_offset = numpy.random.randint(l_length - l_sl)
+            l_offset = numpy.random.randint(l_length - l_sl + 1)
             offset = l_offset * l_scale
 
             silence = numpy.squeeze(silence_data.resample(sr, index=offset, length=sl))
@@ -247,8 +247,8 @@ def create_dataset(config: DatasetConfig):
             sampling_length = config.sampling_length
             local_padding_length = config.local_padding_length
         else:
-            sampling_length = int(config.evaluate_time_length * config.sampling_rate)
-            local_padding_length = int(config.evaluate_local_padding_time_length * config.sampling_rate)
+            sampling_length = int(config.evaluate_time_second * config.sampling_rate)
+            local_padding_length = int(config.evaluate_local_padding_time_second * config.sampling_rate)
 
         dataset = WavesDataset(
             inputs=inputs,

@@ -21,8 +21,8 @@ class DatasetConfig:
     num_train: Optional[int]
     num_test: int
     evaluate_times: Optional[int]
-    evaluate_time_length: Optional[float]
-    evaluate_local_padding_time_length: float
+    evaluate_time_second: Optional[float]
+    evaluate_local_padding_time_second: float
 
 
 @dataclass
@@ -83,4 +83,9 @@ class Config:
 
 
 def backward_compatible(d: Dict[str, Any]):
-    pass
+    assert d['dataset']['speaker_size'] == d['network']['speaker_size']
+
+    assert all(
+        set(o.keys()) == set('fft_size', 'hop_length', 'window_length')
+        for o in d['model']['stft_config']
+    )
