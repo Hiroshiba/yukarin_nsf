@@ -17,6 +17,7 @@ class Predictor(nn.Module):
             neural_filter_hidden_size: int,
     ):
         super().__init__()
+        self.speaker_size = speaker_size
         self.local_size = local_size
         self.local_scale = local_scale
 
@@ -67,20 +68,26 @@ class Predictor(nn.Module):
         batch_size = local.shape[0]
         local_length = local.shape[1]
 
+        source = source.unsqueeze(2)
+
         if self.with_speaker:
             speaker = self.speaker_embedder(speaker_id)
             speaker = speaker.unsqueeze(1)
-            speaker = speaker.expand(batch_size, local_length, 1)
+            speaker = speaker.expand(batch_size, local_length, speaker.shape[2])
             local = torch.cat((local, speaker), dim=2)
 
         condition, _ = self.local_encoder(local)
-        condition = condition.expand(batch_size, local_length * self.local_scale, -1)
+
+        condition = condition.unsqueeze(2)
+        condition = condition.expand(batch_size, local_length, self.local_scale, condition.shape[3])
+        condition = condition.reshape(batch_size, local_length * self.local_scale, condition.shape[3])
+
         if local_padding_length > 0:
             condition = condition[:, local_padding_length:-local_padding_length]
 
         output = torch.cat((source, condition), dim=2)
-        output = self.neural_filter(output)
-        output = self.neural_filter_cap(output)
+        output, _ = self.neural_filter(output)
+        output = self.neural_filter_cap(output).squeeze(2)
         return output
 
 

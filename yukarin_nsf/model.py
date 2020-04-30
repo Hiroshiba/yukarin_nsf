@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Optional
+from warnings import warn
 
+import numpy
 import torch
 from pytorch_trainer import report
 from torch import nn, Tensor
@@ -32,20 +34,21 @@ def stft(x: Tensor, fft_size: int, hop_length: int, window_length: int):
 
 
 def stft_mask(silence: Tensor, fft_size: int, hop_length: int, window_length: int):
-    silence = silence.unsqueeze(1)
+    silence = silence.unsqueeze(2)
     silence = silence.as_strided(
-        size=((silence.shape[0] - fft_size) // hop_length + 1, window_length),
-        stride=(hop_length, 1),
+        size=(silence.shape[0], (silence.shape[1] - fft_size) // hop_length + 1, window_length),
+        stride=(1, hop_length, 1),
     )
-    return ~silence.all(dim=1)
+    return ~(silence.all(dim=2))
 
 
 def amplitude_distance(x: Tensor, t: Tensor, mask: Tensor = None, epsilon=1e-6):
     if mask is not None:
-        if torch.all(~mask):
-            return 0
-        x = x[:, mask]
-        t = t[:, mask]
+        assert torch.any(mask)
+
+        mask = mask.reshape(mask.shape[0], 1, mask.shape[1], 1).expand_as(t)
+        x = x[mask]
+        t = t[mask]
 
     x_real, x_image = x[..., 0], x[..., 1]
     t_real, t_image = t[..., 0], t[..., 1]

@@ -13,6 +13,7 @@ class DatasetConfig:
     input_silence_glob: str
     input_local_glob: str
     local_padding_length: int
+    min_not_silence_length: int
     f0_index: int
     speaker_dict_path: Optional[str]
     speaker_size: Optional[int]
@@ -48,7 +49,7 @@ class TrainConfig:
     log_iteration: int
     snapshot_iteration: int
     stop_iteration: Optional[int]
-    num_processes: int = None
+    num_processes: Optional[int] = None
     optimizer: Dict[str, Any] = field(default_factory=dict(
         name='Adam',
     ))

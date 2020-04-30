@@ -76,20 +76,21 @@ class GenerateEvaluator(nn.Module):
     ):
         batch_size = len(wave)
 
+        if self.local_padding_time_length > 0:
+            local_padding_length = int(self.generator.sampling_rate * self.local_padding_time_length)
+        else:
+            local_padding_length = None
+
         output = self.generator.generate(
             local=local,
             source=source,
             speaker_id=speaker_id,
+            local_padding_length=local_padding_length,
         )
 
         mcd_list = []
-        for wi, wo in zip(wave.numpy(), output):
+        for wi, wo in zip(wave.cpu().numpy(), output):
             wi = Wave(wave=wi, sampling_rate=wo.sampling_rate)
-
-            if self.local_padding_time_length > 0:
-                pad = int(wo.sampling_rate * self.local_padding_time_length)
-                wo.wave = wo.wave[pad:-pad]
-
             mcd = calc_mcd(wave1=wi, wave2=wo)
             mcd_list.append(mcd)
 

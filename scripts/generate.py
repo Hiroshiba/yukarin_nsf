@@ -83,7 +83,7 @@ def generate(
 
     # log_f0 = local[:, self.f0_index]
     # if isinstance(log_f0, torch.Tensor):
-    #     log_f0 = log_f0.numpy()
+    #     log_f0 = log_f0.cpu().numpy()
     #
     # source = generate_source(
     #     log_f0=log_f0,

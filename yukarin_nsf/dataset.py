@@ -10,6 +10,7 @@ from acoustic_feature_extractor.data.wave import Wave
 from torch.utils.data import Dataset, ConcatDataset
 
 from yukarin_nsf.config import DatasetConfig
+from yukarin_nsf.utility.dataset_utility import default_convert
 
 
 @dataclass
@@ -38,8 +39,9 @@ def generate_source(log_f0: numpy.ndarray, local_rate: int, sampling_rate: int):
     f0[log_f0 == 0] = 0
 
     f0 = numpy.repeat(f0, sampling_rate // local_rate)
-    source = numpy.sin(2 * numpy.pi * numpy.cumsum(f0) / local_rate) * 0.7
+    source = numpy.sin(2 * numpy.pi * numpy.cumsum(f0) / local_rate) * 0.1
     source[f0 == 0] = numpy.random.randn(numpy.sum(f0 == 0)) / 3
+    source[f0 != 0] += numpy.random.randn(numpy.sum(f0 != 0)) * 0.003
     return source
 
 
@@ -48,10 +50,12 @@ class BaseWaveDataset(Dataset):
             self,
             sampling_length: int,
             local_padding_length: int,
+            min_not_silence_length: int,
             f0_index: int,
     ) -> None:
         self.sampling_length = sampling_length
         self.local_padding_length = local_padding_length
+        self.min_not_silence_length = min_not_silence_length
         self.f0_index = f0_index
 
     @staticmethod
@@ -61,6 +65,7 @@ class BaseWaveDataset(Dataset):
             silence_data: SamplingData,
             local_data: SamplingData,
             local_padding_length: int,
+            min_not_silence_length: int,
             f0_index: int,
             padding_value=0,
     ):
@@ -90,7 +95,7 @@ class BaseWaveDataset(Dataset):
             offset = l_offset * l_scale
 
             silence = numpy.squeeze(silence_data.resample(sr, index=offset, length=sl))
-            if not silence.all():
+            if (~silence).sum() >= min_not_silence_length:
                 break
         else:
             raise Exception('cannot pick not silence data')
@@ -143,6 +148,7 @@ class BaseWaveDataset(Dataset):
             silence_data=silence_data,
             local_data=local_data,
             local_padding_length=self.local_padding_length,
+            min_not_silence_length=self.min_not_silence_length,
             f0_index=self.f0_index,
         )
 
@@ -153,11 +159,13 @@ class WavesDataset(BaseWaveDataset):
             inputs: List[Union[Input, LazyInput]],
             sampling_length: int,
             local_padding_length: int,
+            min_not_silence_length: int,
             f0_index: int,
     ) -> None:
         super().__init__(
             sampling_length=sampling_length,
             local_padding_length=local_padding_length,
+            min_not_silence_length=min_not_silence_length,
             f0_index=f0_index,
         )
         self.inputs = inputs
@@ -170,11 +178,11 @@ class WavesDataset(BaseWaveDataset):
         if isinstance(input, LazyInput):
             input = input.generate()
 
-        return self.make_input(
+        return default_convert(self.make_input(
             wave_data=input.wave,
             silence_data=input.silence,
             local_data=input.local,
-        )
+        ))
 
 
 class SpeakerWavesDataset(Dataset):
@@ -186,10 +194,10 @@ class SpeakerWavesDataset(Dataset):
     def __len__(self):
         return len(self.wave_dataset)
 
-    def get_example(self, i):
+    def __getitem__(self, i):
         d = self.wave_dataset[i]
-        d['speaker_id'] = numpy.array(self.speaker_ids[i], dtype=numpy.int32)
-        return d
+        d['speaker_id'] = numpy.array(self.speaker_ids[i], dtype=numpy.long)
+        return default_convert(d)
 
 
 def create_dataset(config: DatasetConfig):
@@ -246,6 +254,7 @@ def create_dataset(config: DatasetConfig):
             inputs=inputs,
             sampling_length=sampling_length,
             local_padding_length=local_padding_length,
+            min_not_silence_length=config.min_not_silence_length,
             f0_index=config.f0_index,
         )
 
@@ -256,7 +265,7 @@ def create_dataset(config: DatasetConfig):
             )
 
         if for_evaluate:
-            dataset = ConcatDataset(*([dataset] * config.evaluate_times))
+            dataset = ConcatDataset([dataset] * config.evaluate_times)
 
         return dataset
 

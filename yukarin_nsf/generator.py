@@ -28,13 +28,13 @@ class Generator(object):
 
         self.sampling_rate = config.dataset.sampling_rate
         self.f0_index = config.dataset.f0_index
-        self.local_padding_length = config.dataset.local_padding_length
 
     def generate(
             self,
             local: Union[numpy.ndarray, torch.Tensor],
             source: Union[numpy.ndarray, torch.Tensor],
             speaker_id: Union[numpy.ndarray, torch.Tensor] = None,
+            local_padding_length: int = 0,
     ):
         if isinstance(local, numpy.ndarray):
             local = torch.from_numpy(local)
@@ -54,11 +54,11 @@ class Generator(object):
             output = self.predictor(
                 source=source,
                 local=local,
-                local_padding_length=self.local_padding_length,
+                local_padding_length=local_padding_length,
                 speaker_id=speaker_id,
             )
 
-        output = output.numpy()
+        output = output.cpu().numpy()
         return [
             Wave(wave=o, sampling_rate=self.sampling_rate)
             for o in output
