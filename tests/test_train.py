@@ -20,8 +20,8 @@ def _create_model(
             local_scale=local_scale,
             local_layer_num=1,
             condition_size=5,
-            neural_filter_layer_num=1,
-            neural_filter_hidden_size=128,
+            neural_filter_layer_num=4,
+            neural_filter_hidden_size=512,
         ),
     )
 
@@ -39,9 +39,9 @@ def _create_model(
     return model
 
 
-@retry(tries=10)
-def test_training():
-    model = _create_model(local_size=0, local_scale=40)
+@retry(tries=1)
+def test_train():
+    model = _create_model(local_size=1, local_scale=40)
     dataset = SignWaveDataset(
         sampling_length=4000,
         sampling_rate=8000,
@@ -57,9 +57,9 @@ def test_training():
     def last_hook(o):
         assert o['main/loss'].data < trained_loss
 
-    iteration = 300
+    iteration = 100000
     train_support(
-        batch_size=12,
+        batch_size=32,
         use_gpu=True,
         model=model,
         dataset=dataset,

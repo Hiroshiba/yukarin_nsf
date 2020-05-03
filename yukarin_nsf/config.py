@@ -86,6 +86,6 @@ def backward_compatible(d: Dict[str, Any]):
     assert d['dataset']['speaker_size'] == d['network']['speaker_size']
 
     assert all(
-        set(o.keys()) == set('fft_size', 'hop_length', 'window_length')
+        set(o.keys()) == {'fft_size', 'hop_length', 'window_length'}
         for o in d['model']['stft_config']
     )

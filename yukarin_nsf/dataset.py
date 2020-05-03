@@ -39,7 +39,7 @@ def generate_source(log_f0: numpy.ndarray, local_rate: int, sampling_rate: int):
     f0[log_f0 == 0] = 0
 
     f0 = numpy.repeat(f0, sampling_rate // local_rate)
-    source = numpy.sin(2 * numpy.pi * numpy.cumsum(f0) / local_rate) * 0.1
+    source = numpy.sin(2 * numpy.pi * numpy.cumsum(f0) / sampling_rate) * 0.1
     source[f0 == 0] = numpy.random.randn(numpy.sum(f0 == 0)) / 3
     source[f0 != 0] += numpy.random.randn(numpy.sum(f0 != 0)) * 0.003
     return source
@@ -91,7 +91,10 @@ class BaseWaveDataset(Dataset):
         l_sl = sl // l_scale
 
         for _ in range(10000):
-            l_offset = numpy.random.randint(l_length - l_sl + 1)
+            if l_length > l_sl:
+                l_offset = numpy.random.randint(l_length - l_sl)
+            else:
+                l_offset = 0
             offset = l_offset * l_scale
 
             silence = numpy.squeeze(silence_data.resample(sr, index=offset, length=sl))
@@ -123,8 +126,13 @@ class BaseWaveDataset(Dataset):
             local = local_data.array[l_start:l_end]
 
         # source module
+        if l_pad > 0:
+            log_f0 = local[l_pad:-l_pad, f0_index]
+        else:
+            log_f0 = local[:, f0_index]
+
         source = generate_source(
-            log_f0=local[l_pad:-l_pad, f0_index],
+            log_f0=log_f0,
             local_rate=int(local_data.rate),
             sampling_rate=sr,
         )
