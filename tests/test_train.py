@@ -4,7 +4,7 @@ from retry import retry
 from tests.utility import SignWaveDataset, train_support
 from yukarin_nsf.config import ModelConfig
 from yukarin_nsf.model import Model, Networks
-from yukarin_nsf.network.predictor import Predictor
+from yukarin_nsf.network.predictor import Predictor, NeuralFilterType
 
 
 def _create_model(
@@ -20,8 +20,10 @@ def _create_model(
             local_scale=local_scale,
             local_layer_num=1,
             condition_size=5,
-            neural_filter_layer_num=4,
-            neural_filter_hidden_size=512,
+            neural_filter_type=NeuralFilterType.wavenet,
+            neural_filter_layer_num=10,
+            neural_filter_stack_num=1,
+            neural_filter_hidden_size=64,
         ),
     )
 
@@ -29,9 +31,19 @@ def _create_model(
         eliminate_silence=True,
         stft_config=[
             dict(
-                fft_size=128,
+                fft_size=512,
                 hop_length=80,
-                window_length=100,
+                window_length=320,
+            ),
+            dict(
+                fft_size=128,
+                hop_length=40,
+                window_length=80,
+            ),
+            dict(
+                fft_size=2048,
+                hop_length=640,
+                window_length=1920,
             ),
         ],
     )
@@ -57,9 +69,9 @@ def test_train():
     def last_hook(o):
         assert o['main/loss'].data < trained_loss
 
-    iteration = 100000
+    iteration = 100
     train_support(
-        batch_size=32,
+        batch_size=8,
         use_gpu=True,
         model=model,
         dataset=dataset,

@@ -86,6 +86,7 @@ class Model(nn.Module):
             local_padding_length=self.local_padding_length,
             speaker_id=speaker_id,
         )
+        print(output[0, output.shape[1] // 2 - 50:output.shape[1] // 2 + 50])
 
         loss_list = [
             amplitude_distance(

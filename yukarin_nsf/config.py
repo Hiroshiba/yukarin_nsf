@@ -33,7 +33,9 @@ class NetworkConfig:
     local_scale: int
     local_layer_num: int
     condition_size: int
+    neural_filter_type: str
     neural_filter_layer_num: int
+    neural_filter_stack_num: Optional[int]
     neural_filter_hidden_size: int
 
 
@@ -89,3 +91,10 @@ def backward_compatible(d: Dict[str, Any]):
         set(o.keys()) == {'fft_size', 'hop_length', 'window_length'}
         for o in d['model']['stft_config']
     )
+
+    if 'neural_filter_type' not in d['network']:
+        d['network']['neural_filter_type'] = 'gru'
+
+    if 'neural_filter_stack_num' not in d['network']:
+        d['network']['neural_filter_stack_num'] = None
+

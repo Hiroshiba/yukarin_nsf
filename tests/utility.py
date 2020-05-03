@@ -50,17 +50,17 @@ class SignWaveDataset(BaseWaveDataset):
 
         wave = (numpy.arange(length, dtype=numpy.float32) * self.frequency / sampling_rate + rand) * 2 * numpy.pi
         wave = numpy.sin(wave) / 10
+        wave += (numpy.random.rand(length) * 2 - 1) / 10
+
         local = numpy.ones(shape=(length // self.local_scale, 1), dtype=numpy.float32)
         local = numpy.log(local * self.frequency)
+
         silence = numpy.zeros(shape=(length,), dtype=numpy.bool)
-        return default_convert(self.extract_input(
-            sampling_length=self.sampling_length,
+
+        return default_convert(self.make_input(
             wave_data=Wave(wave=wave, sampling_rate=sampling_rate),
             silence_data=SamplingData(array=silence, rate=sampling_rate),
             local_data=SamplingData(array=local, rate=sampling_rate // self.local_scale),
-            local_padding_length=self.local_padding_length,
-            min_not_silence_length=self.min_not_silence_length,
-            f0_index=self.f0_index,
         ))
 
 
@@ -98,7 +98,7 @@ def train_support(
         with reporter.scope(observation):
             updater.update()
 
-        if i % 100 == 0:
+        if i % 1 == 0:
             print(i, observation)
 
         if i == 0:
