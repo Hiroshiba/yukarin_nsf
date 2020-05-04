@@ -98,3 +98,4 @@ def backward_compatible(d: Dict[str, Any]):
     if 'neural_filter_stack_num' not in d['network']:
         d['network']['neural_filter_stack_num'] = None
 
+    assert (d['network']['neural_filter_type'] == 'wavenet') == (d['network']['neural_filter_stack_num'] is not None)

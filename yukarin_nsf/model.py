@@ -53,7 +53,7 @@ def amplitude_distance(x: Tensor, t: Tensor, mask: Tensor = None, epsilon=1e-6):
 
     x_amplitude = x_real ** 2 + x_image ** 2 + epsilon
     t_amplitude = t_real ** 2 + t_image ** 2 + epsilon
-    return torch.mean((torch.log(x_amplitude) - torch.log(t_amplitude)) ** 2)
+    return torch.mean((torch.log(x_amplitude) - torch.log(t_amplitude)) ** 2) / 2
 
 
 class Model(nn.Module):
@@ -86,7 +86,6 @@ class Model(nn.Module):
             local_padding_length=self.local_padding_length,
             speaker_id=speaker_id,
         )
-        print(output[0, output.shape[1] // 2 - 50:output.shape[1] // 2 + 50])
 
         loss_list = [
             amplitude_distance(
@@ -111,7 +110,7 @@ class Model(nn.Module):
             )
             for stft_config in self.model_config.stft_config
         ]
-        loss = torch.sum(torch.stack(loss_list))
+        loss = torch.mean(torch.stack(loss_list))
 
         # report
         values = dict(
