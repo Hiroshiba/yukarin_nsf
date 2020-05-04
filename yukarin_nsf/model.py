@@ -43,10 +43,8 @@ def stft_mask(silence: Tensor, fft_size: int, hop_length: int, window_length: in
 def amplitude_distance(x: Tensor, t: Tensor, mask: Tensor = None, epsilon=1e-6):
     if mask is not None:
         assert torch.any(mask)
-
-        mask = mask.reshape(mask.shape[0], 1, mask.shape[1], 1).expand_as(t)
-        x = x[mask]
-        t = t[mask]
+        x = x.transpose(1, 2)[mask]
+        t = t.transpose(1, 2)[mask]
 
     x_real, x_image = x[..., 0], x[..., 1]
     t_real, t_image = t[..., 0], t[..., 1]

@@ -6,7 +6,7 @@ import torch
 from acoustic_feature_extractor.data.sampling_data import SamplingData
 from acoustic_feature_extractor.data.wave import Wave
 from pytorch_trainer import Reporter
-from pytorch_trainer.iterators import MultiprocessIterator, SerialIterator
+from pytorch_trainer.iterators import SerialIterator
 from pytorch_trainer.training import StandardUpdater
 from torch.optim import Adam
 from torch.utils.data import Dataset
@@ -49,8 +49,7 @@ class SignWaveDataset(BaseWaveDataset):
         rand = numpy.random.rand()
 
         wave = (numpy.arange(length, dtype=numpy.float32) * self.frequency / sampling_rate + rand) * 2 * numpy.pi
-        wave = numpy.sin(wave) / 10
-        wave += (numpy.random.rand(length) * 2 - 1) / 10
+        wave = numpy.sin(wave) / 2
 
         local = numpy.ones(shape=(length // self.local_scale, 1), dtype=numpy.float32)
         local = numpy.log(local * self.frequency)
@@ -73,7 +72,7 @@ def train_support(
         first_hook: Callable[[Dict], None] = None,
         last_hook: Callable[[Dict], None] = None,
 ):
-    optimizer = Adam(model.parameters(), lr=0.0001)
+    optimizer = Adam(model.parameters(), lr=0.001)
 
     train_iter = SerialIterator(dataset, batch_size)
 
@@ -98,7 +97,7 @@ def train_support(
         with reporter.scope(observation):
             updater.update()
 
-        if i % 1 == 0:
+        if i % 100 == 0:
             print(i, observation)
 
         if i == 0:

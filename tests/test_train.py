@@ -23,7 +23,7 @@ def _create_model(
             neural_filter_type=NeuralFilterType.wavenet,
             neural_filter_layer_num=10,
             neural_filter_stack_num=1,
-            neural_filter_hidden_size=64,
+            neural_filter_hidden_size=16,
         ),
     )
 
@@ -51,17 +51,17 @@ def _create_model(
     return model
 
 
-@retry(tries=1)
+@retry(tries=10)
 def test_train():
     model = _create_model(local_size=1, local_scale=40)
     dataset = SignWaveDataset(
-        sampling_length=4000,
-        sampling_rate=8000,
+        sampling_length=16000,
+        sampling_rate=16000,
         local_padding_length=0,
         local_scale=40,
     )
 
-    trained_loss = 1
+    trained_loss = 2
 
     def first_hook(o):
         assert o['main/loss'].data > trained_loss
@@ -69,7 +69,7 @@ def test_train():
     def last_hook(o):
         assert o['main/loss'].data < trained_loss
 
-    iteration = 100
+    iteration = 500
     train_support(
         batch_size=8,
         use_gpu=True,
