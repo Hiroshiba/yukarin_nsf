@@ -39,6 +39,8 @@ def generate(
         model_iteration: Optional[int],
         model_config: Optional[Path],
         output_dir: Path,
+        num_test: int,
+        time_second: float,
         use_gpu: bool,
 ):
     if model_config is None:
@@ -61,25 +63,27 @@ def generate(
 
     batch_size = config.train.batchsize
 
+    config.dataset.sampling_length = int(config.dataset.sampling_rate * time_second)
     dataset = create_dataset(config.dataset)['test']
 
     if isinstance(dataset, SpeakerWavesDataset):
-        local_paths = [input.path_local for input in dataset.wave_dataset.inputs]
+        local_paths = [input.path_local for input in dataset.wave_dataset.inputs][:num_test]
     elif isinstance(dataset, WavesDataset):
-        local_paths = [input.path_local for input in dataset.inputs]
+        local_paths = [input.path_local for input in dataset.inputs][:num_test]
     else:
         raise Exception()
 
-    for obj in chunked(tqdm(zip(dataset, local_paths), desc='generate'), batch_size):
-        data = convert.concat_examples([o[0] for o in obj])
+    for data, local_path in tqdm(zip(chunked(dataset, batch_size), chunked(local_paths, batch_size)), desc='generate'):
+        data = convert.concat_examples(data)
         output = generator.generate(
             local=data['local'],
             source=data['source'],
             speaker_id=data['speaker_id'] if 'speaker_id' in data else None,
+            local_padding_length=config.dataset.local_padding_length,
         )
 
-        for wave, local_path in zip(output, [o[1] for o in obj]):
-            wave.save(output_dir / (local_path.stem + '.wav'))
+        for wave, p in zip(output, local_path):
+            wave.save(output_dir / (p.stem + '.wav'))
 
     # log_f0 = local[:, self.f0_index]
     # if isinstance(log_f0, torch.Tensor):
@@ -99,5 +103,7 @@ if __name__ == '__main__':
     parser.add_argument('--model_iteration', type=int)
     parser.add_argument('--model_config', type=Path)
     parser.add_argument('--output_dir', required=True, type=Path)
+    parser.add_argument('--num_test', type=int, default=10)
+    parser.add_argument('--time_second', type=float, default=1)
     parser.add_argument('--use_gpu', action='store_true')
     generate(**vars(parser.parse_args()))
