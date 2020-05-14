@@ -1,23 +1,35 @@
 from dataclasses import dataclass
+from enum import Enum
 from typing import Optional
 
 import torch
 from pytorch_trainer import report
 from torch import nn, Tensor
+from torch.nn import functional as F
 
 from yukarin_nsf.config import ModelConfig, NetworkConfig
+from yukarin_nsf.network.discriminator import Discriminator
 from yukarin_nsf.network.predictor import create_predictor, Predictor
 
 
 @dataclass
 class Networks:
     predictor: Predictor
+    discriminator: Optional[Discriminator]
 
 
 def create_network(config: NetworkConfig):
     return Networks(
         predictor=create_predictor(config),
+        discriminator=Discriminator(
+            hidden_size=config.discriminator_hidden_size,
+            layer_num=config.discriminator_layer_num,
+        ) if config.discriminator_type is not None else None
     )
+
+
+class DiscriminatorInputType(str, Enum):
+    gan = 'gan'
 
 
 def stft(x: Tensor, fft_size: int, hop_length: int, window_length: int):
@@ -42,7 +54,6 @@ def stft_mask(silence: Tensor, fft_size: int, hop_length: int, window_length: in
 
 def amplitude_distance(x: Tensor, t: Tensor, mask: Tensor = None, epsilon=1e-6):
     if mask is not None:
-        assert torch.any(mask)
         x = x.transpose(1, 2)[mask]
         t = t.transpose(1, 2)[mask]
 
@@ -64,9 +75,10 @@ class Model(nn.Module):
         super().__init__()
         self.model_config = model_config
         self.predictor = networks.predictor
+        self.discriminator = networks.discriminator
         self.local_padding_length = local_padding_length
 
-    def __call__(
+    def forward(
             self,
             wave: Tensor,
             silence: Tensor,
@@ -77,6 +89,7 @@ class Model(nn.Module):
         assert silence.is_contiguous()
 
         batch_size = wave.shape[0]
+        values = {}
 
         output = self.predictor(
             source=source,
@@ -85,7 +98,8 @@ class Model(nn.Module):
             speaker_id=speaker_id,
         )
 
-        loss_list = [
+        # stft
+        stft_loss_list = [
             amplitude_distance(
                 x=stft(
                     output,
@@ -108,15 +122,81 @@ class Model(nn.Module):
             )
             for stft_config in self.model_config.stft_config
         ]
-        loss = torch.mean(torch.stack(loss_list))
+        stft_loss = torch.mean(torch.stack(stft_loss_list))
+        loss = stft_loss
+        values['loss_stft'] = stft_loss
+
+        # adversarial
+        if self.model_config.discriminator_input_type is not None:
+            mask = self.discriminator.generate_mask(silence=silence)
+            adv_loss = F.softplus(-self.discriminator(output))[mask].mean() * self.model_config.adversarial_loss_scale
+            loss += adv_loss
+            values['loss_adv'] = adv_loss
 
         # report
-        values = dict(
-            loss=loss,
-        )
-        for l, stft_config in zip(loss_list, self.model_config.stft_config):
+        values['loss'] = loss
+
+        for l, stft_config in zip(stft_loss_list, self.model_config.stft_config):
             key = 'loss_{fft_size}_{hop_length}_{window_length}'.format(**stft_config)
             values[key] = l
+
+        if not self.training:
+            values = {key: (l, batch_size) for key, l in values.items()}  # add weight
+        report(values, self)
+
+        return loss
+
+
+class DiscriminatorModel(nn.Module):
+    def __init__(
+            self,
+            model_config: ModelConfig,
+            networks: Networks,
+            local_padding_length: int,
+    ) -> None:
+        super().__init__()
+        self.model_config = model_config
+        self.predictor = networks.predictor
+        self.discriminator = networks.discriminator
+        self.local_padding_length = local_padding_length
+
+    def forward(
+            self,
+            wave: Tensor,
+            silence: Tensor,
+            local: Tensor,
+            source: Tensor,
+            speaker_id: Optional[Tensor] = None,
+    ):
+        assert silence.is_contiguous()
+
+        batch_size = wave.shape[0]
+        values = {}
+
+        with torch.no_grad():
+            output = self.predictor(
+                source=source,
+                local=local,
+                local_padding_length=self.local_padding_length,
+                speaker_id=speaker_id,
+            )
+
+        # adversarial
+        mask = self.discriminator.generate_mask(silence=silence)
+
+        fake = self.discriminator(output)[mask]
+        fake_loss = F.softplus(fake).mean()
+        values['loss_fake'] = fake_loss
+        values['recall_fake'] = (fake < 0).float().mean()
+
+        real = self.discriminator(wave)[mask]
+        real_loss = F.softplus(-real).mean()
+        values['loss_real'] = real_loss
+        values['recall_real'] = (real > 0).float().mean()
+
+        # report
+        loss = fake_loss + real_loss
+        values['loss'] = loss
 
         if not self.training:
             values = {key: (l, batch_size) for key, l in values.items()}  # add weight

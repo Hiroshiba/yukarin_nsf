@@ -39,9 +39,18 @@ def generate_source(log_f0: numpy.ndarray, local_rate: int, sampling_rate: int):
     f0[log_f0 == 0] = 0
 
     f0 = numpy.repeat(f0, sampling_rate // local_rate)
-    source = numpy.sin(2 * numpy.pi * numpy.cumsum(f0) / sampling_rate) * 0.1
-    source[f0 == 0] = numpy.random.randn(numpy.sum(f0 == 0)) / 3
-    source[f0 != 0] += numpy.random.randn(numpy.sum(f0 != 0)) * 0.003
+    voiced = f0 != 0
+
+    source = numpy.empty(len(f0), dtype=numpy.float32)
+
+    points = numpy.where(voiced[1:] != voiced[:-1])[0] + 1
+    for start, end in zip(numpy.r_[0, points], numpy.r_[points, len(f0)]):
+        if voiced[start]:
+            r = numpy.random.uniform(-numpy.pi, numpy.pi)
+            source[start:end] = numpy.sin(2 * numpy.pi * numpy.cumsum(f0[start:end]) / sampling_rate + r) * 0.1
+            source[start:end] += numpy.random.randn(end - start) * 0.003
+        else:
+            source[start:end] = numpy.random.randn(end - start) / 3 * 0.1
     return source
 
 
@@ -239,7 +248,6 @@ def create_dataset(config: DatasetConfig):
 
     trains = fn_list[num_test:][:num_train]
     tests = fn_list[:num_test]
-    train_tests = trains[:num_test]
 
     def make_dataset(fns, for_evaluate=False):
         inputs = [
@@ -280,6 +288,5 @@ def create_dataset(config: DatasetConfig):
     return dict(
         train=make_dataset(trains),
         test=make_dataset(tests),
-        train_test=make_dataset(train_tests),
         test_eval=make_dataset(tests, for_evaluate=True),
     )

@@ -37,12 +37,17 @@ class NetworkConfig:
     neural_filter_layer_num: int
     neural_filter_stack_num: Optional[int]
     neural_filter_hidden_size: int
+    discriminator_type: Optional[str]
+    discriminator_layer_num: Optional[int]
+    discriminator_hidden_size: Optional[int]
 
 
 @dataclass
 class ModelConfig:
     eliminate_silence: bool
     stft_config: List[Dict[str, int]]
+    discriminator_input_type: Optional[str]
+    adversarial_loss_scale: Optional[float]
 
 
 @dataclass
@@ -55,6 +60,7 @@ class TrainConfig:
     optimizer: Dict[str, Any] = field(default_factory=dict(
         name='Adam',
     ))
+    discriminator_optimizer: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -99,3 +105,21 @@ def backward_compatible(d: Dict[str, Any]):
         d['network']['neural_filter_stack_num'] = None
 
     assert (d['network']['neural_filter_type'] == 'wavenet') == (d['network']['neural_filter_stack_num'] is not None)
+
+    if 'discriminator_type' not in d['network']:
+        d['network']['discriminator_type'] = None
+    if 'discriminator_layer_num' not in d['network']:
+        d['network']['discriminator_layer_num'] = None
+    if 'discriminator_hidden_size' not in d['network']:
+        d['network']['discriminator_hidden_size'] = None
+
+    if 'discriminator_input_type' not in d['model']:
+        d['model']['discriminator_input_type'] = None
+    if 'adversarial_loss_scale' not in d['model']:
+        d['model']['adversarial_loss_scale'] = None
+    assert (d['network']['discriminator_type'] is None) == (d['model']['discriminator_input_type'] is None)
+    assert (d['network']['discriminator_type'] is None) == (d['model']['adversarial_loss_scale'] is None)
+
+    if 'discriminator_optimizer' not in d['train']:
+        d['train']['discriminator_optimizer'] = None
+    assert (d['network']['discriminator_type'] is None) == (d['train']['discriminator_optimizer'] is None)

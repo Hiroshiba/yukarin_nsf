@@ -1,5 +1,6 @@
 from pathlib import Path
-from typing import Callable, Dict
+from pprint import pprint
+from typing import Callable, Dict, Optional
 
 import numpy
 import torch
@@ -7,12 +8,12 @@ from acoustic_feature_extractor.data.sampling_data import SamplingData
 from acoustic_feature_extractor.data.wave import Wave
 from pytorch_trainer import Reporter
 from pytorch_trainer.iterators import SerialIterator
-from pytorch_trainer.training import StandardUpdater
 from torch.optim import Adam
 from torch.utils.data import Dataset
 
 from yukarin_nsf.dataset import BaseWaveDataset
-from yukarin_nsf.model import Model
+from yukarin_nsf.model import Model, DiscriminatorModel
+from yukarin_nsf.updater import Updater
 from yukarin_nsf.utility.dataset_utility import default_convert
 
 
@@ -67,30 +68,41 @@ def train_support(
         batch_size: int,
         use_gpu: bool,
         model: Model,
+        discriminator_model: Optional[DiscriminatorModel],
         dataset: Dataset,
         iteration: int,
         first_hook: Callable[[Dict], None] = None,
         last_hook: Callable[[Dict], None] = None,
 ):
     optimizer = Adam(model.parameters(), lr=0.001)
+    if discriminator_model is not None:
+        discriminator_optimizer = Adam(discriminator_model.parameters(), lr=0.001)
+    else:
+        discriminator_optimizer = None
 
     train_iter = SerialIterator(dataset, batch_size)
 
     if use_gpu:
         device = torch.device('cuda')
         model.to(device)
+        if discriminator_model is not None:
+            discriminator_model.to(device)
     else:
         device = torch.device('cpu')
 
-    updater = StandardUpdater(
+    updater = Updater(
         iterator=train_iter,
         optimizer=optimizer,
+        discriminator_optimizer=discriminator_optimizer,
         model=model,
+        discriminator_model=discriminator_model,
         device=device,
     )
 
     reporter = Reporter()
     reporter.add_observer('main', model)
+    if discriminator_model is not None:
+        reporter.add_observer('discriminator', discriminator_model)
 
     observation: Dict = {}
     for i in range(iteration):
@@ -98,12 +110,13 @@ def train_support(
             updater.update()
 
         if i % 100 == 0:
-            print(i, observation)
+            print('iteration', i)
+            pprint(observation)
 
         if i == 0:
             if first_hook is not None:
                 first_hook(observation)
 
-    print(observation)
+    pprint(observation)
     if last_hook is not None:
         last_hook(observation)

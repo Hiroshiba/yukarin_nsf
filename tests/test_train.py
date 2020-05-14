@@ -3,7 +3,8 @@ from retry import retry
 
 from tests.utility import SignWaveDataset, train_support
 from yukarin_nsf.config import ModelConfig
-from yukarin_nsf.model import Model, Networks
+from yukarin_nsf.model import Model, Networks, DiscriminatorModel, DiscriminatorInputType
+from yukarin_nsf.network.discriminator import Discriminator
 from yukarin_nsf.network.predictor import Predictor, NeuralFilterType
 
 
@@ -11,6 +12,7 @@ def _create_model(
         local_size: int,
         local_scale: int,
         speaker_size=0,
+        with_discriminator=False,
 ):
     networks = Networks(
         predictor=Predictor(
@@ -25,6 +27,10 @@ def _create_model(
             neural_filter_stack_num=1,
             neural_filter_hidden_size=16,
         ),
+        discriminator=Discriminator(
+            hidden_size=16,
+            layer_num=10,
+        ) if with_discriminator else None,
     )
 
     model_config = ModelConfig(
@@ -46,14 +52,20 @@ def _create_model(
                 window_length=1920,
             ),
         ],
+        discriminator_input_type=DiscriminatorInputType.gan if with_discriminator else None,
+        adversarial_loss_scale=1,
     )
     model = Model(model_config=model_config, networks=networks, local_padding_length=0)
-    return model
+    if with_discriminator:
+        discriminator_model = DiscriminatorModel(model_config=model_config, networks=networks, local_padding_length=0)
+    else:
+        discriminator_model = None
+    return model, discriminator_model
 
 
 @retry(tries=10)
 def test_train():
-    model = _create_model(local_size=1, local_scale=40)
+    model, _ = _create_model(local_size=1, local_scale=40)
     dataset = SignWaveDataset(
         sampling_length=16000,
         sampling_rate=16000,
@@ -61,19 +73,61 @@ def test_train():
         local_scale=40,
     )
 
-    trained_loss = 2
-
     def first_hook(o):
-        assert o['main/loss'].data > trained_loss
+        assert o['main/loss'].data > 2
 
     def last_hook(o):
-        assert o['main/loss'].data < trained_loss
+        assert o['main/loss'].data < 2
 
     iteration = 500
     train_support(
         batch_size=8,
         use_gpu=True,
         model=model,
+        discriminator_model=None,
+        dataset=dataset,
+        iteration=iteration,
+        first_hook=first_hook,
+        last_hook=last_hook,
+    )
+
+    # save model
+    torch.save(
+        model.predictor.state_dict(),
+        (
+            '/tmp/'
+            f'test_training'
+            f'-speaker_size=0'
+            f'-iteration={iteration}'
+            f'-with_discriminator'
+            '.pth'
+        ),
+    )
+
+
+@retry(tries=10)
+def test_train_discriminator():
+    model, discriminator_model = _create_model(local_size=1, local_scale=40, with_discriminator=True)
+    dataset = SignWaveDataset(
+        sampling_length=16000,
+        sampling_rate=16000,
+        local_padding_length=0,
+        local_scale=40,
+    )
+
+    def first_hook(o):
+        assert o['main/loss'].data > 3
+        assert 'discriminator/loss' in o
+
+    def last_hook(o):
+        assert o['main/loss'].data < 3
+
+    iteration = 500
+    train_support(
+        batch_size=8,
+        use_gpu=True,
+        model=model,
+        discriminator_model=discriminator_model,
         dataset=dataset,
         iteration=iteration,
         first_hook=first_hook,

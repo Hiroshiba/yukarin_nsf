@@ -7,16 +7,30 @@ import torch
 import yaml
 from pytorch_trainer.iterators import MultiprocessIterator
 from pytorch_trainer.training import extensions, Trainer
-from pytorch_trainer.training.updaters import StandardUpdater
 from tensorboardX import SummaryWriter
-from torch import optim
+from torch import optim, nn
 
 from yukarin_nsf.config import Config
 from yukarin_nsf.dataset import create_dataset
 from yukarin_nsf.evaluator import GenerateEvaluator
 from yukarin_nsf.generator import Generator
-from yukarin_nsf.model import Model, create_network
+from yukarin_nsf.model import Model, DiscriminatorModel, create_network
+from yukarin_nsf.updater import Updater
 from yukarin_nsf.utility.tensorboard_extension import TensorboardReport
+
+
+def create_optimizer(optimizer_config: Dict[str, Any], model: nn.Module):
+    cp: Dict[str, Any] = copy(optimizer_config)
+    n = cp.pop('name').lower()
+
+    if n == 'adam':
+        optimizer = optim.Adam(model.parameters(), **cp)
+    elif n == 'sgd':
+        optimizer = optim.SGD(model.parameters(), **cp)
+    else:
+        raise ValueError(n)
+
+    return optimizer
 
 
 def create_trainer(
@@ -32,15 +46,25 @@ def create_trainer(
         yaml.safe_dump(config.to_dict(), f)
 
     # model
+    device = torch.device('cuda')
+
     networks = create_network(config.network)
     model = Model(
         model_config=config.model,
         networks=networks,
         local_padding_length=config.dataset.local_padding_length,
     )
-
-    device = torch.device('cuda')
     model.to(device)
+
+    if config.model.discriminator_input_type is not None:
+        discriminator_model = DiscriminatorModel(
+            model_config=config.model,
+            networks=networks,
+            local_padding_length=config.dataset.local_padding_length,
+        )
+        discriminator_model.to(device)
+    else:
+        discriminator_model = None
 
     # dataset
     def _create_iterator(dataset, for_train: bool):
@@ -56,27 +80,24 @@ def create_trainer(
     datasets = create_dataset(config.dataset)
     train_iter = _create_iterator(datasets['train'], for_train=True)
     test_iter = _create_iterator(datasets['test'], for_train=False)
-    train_test_iter = _create_iterator(datasets['train_test'], for_train=False)
     test_eval_iter = _create_iterator(datasets['test_eval'], for_train=False)
 
     warnings.simplefilter('error', MultiprocessIterator.TimeoutWarning)
 
     # optimizer
-    cp: Dict[str, Any] = copy(config.train.optimizer)
-    n = cp.pop('name').lower()
-
-    if n == 'adam':
-        optimizer = optim.Adam(model.parameters(), **cp)
-    elif n == 'sgd':
-        optimizer = optim.SGD(model.parameters(), **cp)
+    optimizer = create_optimizer(config.train.optimizer, model)
+    if config.train.discriminator_optimizer is not None:
+        discriminator_optimizer = create_optimizer(config.train.discriminator_optimizer, discriminator_model)
     else:
-        raise ValueError(n)
+        discriminator_optimizer = None
 
     # updater
-    updater = StandardUpdater(
+    updater = Updater(
         iterator=train_iter,
         optimizer=optimizer,
+        discriminator_model=discriminator_model,
         model=model,
+        discriminator_optimizer=discriminator_optimizer,
         device=device,
     )
 
@@ -89,8 +110,9 @@ def create_trainer(
 
     ext = extensions.Evaluator(test_iter, model, device=device)
     trainer.extend(ext, name='test', trigger=trigger_log)
-    ext = extensions.Evaluator(train_test_iter, model, device=device)
-    trainer.extend(ext, name='train', trigger=trigger_log)
+    if discriminator_model is not None:
+        ext = extensions.Evaluator(test_iter, discriminator_model, device=device)
+        trainer.extend(ext, name='test', trigger=trigger_log)
 
     generator = Generator(config=config, predictor=networks.predictor, use_gpu=True)
     generate_evaluator = GenerateEvaluator(
@@ -103,6 +125,11 @@ def create_trainer(
 
     ext = extensions.snapshot_object(networks.predictor, filename='predictor_{.updater.iteration}.pth')
     trainer.extend(ext, trigger=trigger_snapshot)
+    ext = extensions.snapshot_object(trainer, filename='trainer_{.updater.iteration}.pth')
+    trainer.extend(ext, trigger=trigger_snapshot)
+    if networks.discriminator is not None:
+        ext = extensions.snapshot_object(networks.discriminator, filename='discriminator_{.updater.iteration}.pth')
+        trainer.extend(ext, trigger=trigger_snapshot)
 
     trainer.extend(extensions.FailOnNonNumber(), trigger=trigger_log)
     trainer.extend(extensions.LogReport(trigger=trigger_log))
@@ -112,6 +139,8 @@ def create_trainer(
     trainer.extend(ext, trigger=trigger_log)
 
     (output / 'struct.txt').write_text(repr(model))
+    if discriminator_model is not None:
+        (output / 'discriminator_struct.txt').write_text(repr(discriminator_model))
 
     if trigger_stop is not None:
         trainer.extend(extensions.ProgressBar(trigger_stop))

@@ -99,7 +99,7 @@ class Predictor(nn.Module):
         :param local: float (batch_size, local_length, ?)
         :param speaker_id: int (batch_size, )
         :return:
-            output: float (batch_size, 1)
+            output: float (batch_size, wave_length)
         """
         assert local.shape[2] == self.local_size, f'{local.shape[2]} {self.local_size}'
 
