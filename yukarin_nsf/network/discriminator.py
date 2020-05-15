@@ -1,7 +1,10 @@
+import math
 from enum import Enum
 
 import numpy
 from torch import Tensor, nn
+
+from yukarin_nsf.network.residual_block import ResidualBlock
 
 
 class DiscriminatorType(str, Enum):
@@ -26,17 +29,17 @@ class Discriminator(nn.Module):
             nn.LeakyReLU(inplace=True, negative_slope=0.2),
         ])
 
-        convs = []
-        for i_layer in range(layer_num):
-            convs.append(nn.utils.weight_norm(nn.Conv1d(
-                in_channels=hidden_size,
-                out_channels=hidden_size,
-                kernel_size=3,
+        self.residual_blocks = nn.ModuleList([
+            ResidualBlock(
+                hidden_size=hidden_size,
+                condition_size=None,
                 dilation=2 ** i_layer,
-                padding=0,
-            )))
-            convs.append(nn.LeakyReLU(inplace=True, negative_slope=0.2))
-        self.convs = nn.Sequential(*convs)
+                is_last=i_layer == layer_num - 1,
+                no_padding=True,
+                output_activation_function=nn.LeakyReLU(inplace=True, negative_slope=0.2),
+            )
+            for i_layer in range(layer_num)
+        ])
 
         self.tail = nn.utils.weight_norm(nn.Conv1d(
             in_channels=hidden_size,
@@ -55,10 +58,25 @@ class Discriminator(nn.Module):
         """
         x = x.unsqueeze(1)
         x = self.head(x)
-        x = self.convs(x)
-        x = self.tail(x)
-        x = x.squeeze(1)
-        return x
+
+        output = None
+        for i_layer, residual_block in enumerate(self.residual_blocks):
+            x, s = residual_block(x=x, c=None)
+
+            if i_layer < self.layer_num - 1:
+                pad = numpy.sum(2 ** numpy.arange(i_layer + 1, self.layer_num))
+                s = s[:, :, pad:-pad]
+
+            if output is None:
+                output = s
+            else:
+                output += s
+
+        output *= math.sqrt(1.0 / len(self.residual_blocks))
+
+        output = self.tail(output)
+        output = output.squeeze(1)
+        return output
 
     def generate_mask(
             self,
