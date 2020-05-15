@@ -2,11 +2,10 @@ from pathlib import Path
 from typing import Optional
 
 import numpy
-import torch
 from acoustic_feature_extractor.data.spectrogram import to_melcepstrum
 from acoustic_feature_extractor.data.wave import Wave
 from pytorch_trainer import report
-from torch import nn
+from torch import nn, Tensor
 
 from yukarin_nsf.generator import Generator
 
@@ -68,11 +67,12 @@ class GenerateEvaluator(nn.Module):
 
     def __call__(
             self,
-            wave: torch.Tensor,
-            silence: torch.Tensor,
-            local: torch.Tensor,
-            source: torch.Tensor,
-            speaker_id: torch.Tensor = None,
+            wave: Tensor,
+            silence: Tensor,
+            local: Tensor,
+            source: Tensor,
+            source2: Tensor,
+            speaker_id: Tensor = None,
     ):
         batch_size = len(wave)
 

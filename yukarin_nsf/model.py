@@ -8,7 +8,7 @@ from torch import nn, Tensor
 from torch.nn import functional as F
 
 from yukarin_nsf.config import ModelConfig, NetworkConfig
-from yukarin_nsf.network.discriminator import Discriminator
+from yukarin_nsf.network.discriminator import Discriminator, create_discriminator
 from yukarin_nsf.network.predictor import create_predictor, Predictor
 
 
@@ -21,15 +21,13 @@ class Networks:
 def create_network(config: NetworkConfig):
     return Networks(
         predictor=create_predictor(config),
-        discriminator=Discriminator(
-            hidden_size=config.discriminator_hidden_size,
-            layer_num=config.discriminator_layer_num,
-        ) if config.discriminator_type is not None else None
+        discriminator=create_discriminator(config) if config.discriminator_type is not None else None
     )
 
 
 class DiscriminatorInputType(str, Enum):
     gan = 'gan'
+    cgan = 'cgan'
 
 
 def stft(x: Tensor, fft_size: int, hop_length: int, window_length: int):
@@ -84,6 +82,7 @@ class Model(nn.Module):
             silence: Tensor,
             local: Tensor,
             source: Tensor,
+            source2: Tensor,
             speaker_id: Optional[Tensor] = None,
     ):
         assert silence.is_contiguous()
@@ -128,8 +127,14 @@ class Model(nn.Module):
 
         # adversarial
         if self.model_config.discriminator_input_type is not None:
+            if self.model_config.discriminator_input_type == DiscriminatorInputType.gan:
+                c = None
+            else:
+                c = source
+            fake = self.discriminator(x=output, c=c)
+
             mask = self.discriminator.generate_mask(silence=silence)
-            adv_loss = F.softplus(-self.discriminator(output))[mask].mean() * self.model_config.adversarial_loss_scale
+            adv_loss = F.softplus(-fake)[mask].mean() * self.model_config.adversarial_loss_scale
             loss += adv_loss
             values['loss_adv'] = adv_loss
 
@@ -166,6 +171,7 @@ class DiscriminatorModel(nn.Module):
             silence: Tensor,
             local: Tensor,
             source: Tensor,
+            source2: Tensor,
             speaker_id: Optional[Tensor] = None,
     ):
         assert silence.is_contiguous()
@@ -184,12 +190,17 @@ class DiscriminatorModel(nn.Module):
         # adversarial
         mask = self.discriminator.generate_mask(silence=silence)
 
-        fake = self.discriminator(output)[mask]
+        if self.model_config.discriminator_input_type == DiscriminatorInputType.gan:
+            c = None
+        else:
+            c = source2
+
+        fake = self.discriminator(x=output, c=c)[mask]
         fake_loss = F.softplus(fake).mean()
         values['loss_fake'] = fake_loss
         values['recall_fake'] = (fake < 0).float().mean()
 
-        real = self.discriminator(wave)[mask]
+        real = self.discriminator(x=wave, c=c)[mask]
         real_loss = F.softplus(-real).mean()
         values['loss_real'] = real_loss
         values['recall_real'] = (real > 0).float().mean()

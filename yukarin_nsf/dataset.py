@@ -145,12 +145,18 @@ class BaseWaveDataset(Dataset):
             local_rate=int(local_data.rate),
             sampling_rate=sr,
         )
+        source2 = generate_source(
+            log_f0=log_f0,
+            local_rate=int(local_data.rate),
+            sampling_rate=sr,
+        )
 
         return dict(
             wave=wave,
             silence=silence,
             local=local,
             source=source,
+            source2=source2,
         )
 
     def make_input(

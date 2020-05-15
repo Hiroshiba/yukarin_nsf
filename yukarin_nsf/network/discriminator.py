@@ -1,16 +1,22 @@
 from enum import Enum
 
 import numpy
+import torch
 from torch import Tensor, nn
+from typing import Optional
+
+from yukarin_nsf.config import NetworkConfig
 
 
 class DiscriminatorType(str, Enum):
     wavegan = 'wavegan'
+    cgan = 'cgan'
 
 
 class Discriminator(nn.Module):
     def __init__(
             self,
+            input_size: int,
             hidden_size: int,
             layer_num: int,
     ):
@@ -19,7 +25,7 @@ class Discriminator(nn.Module):
 
         self.head = nn.Sequential(*[
             nn.utils.weight_norm(nn.Conv1d(
-                in_channels=1,
+                in_channels=input_size,
                 out_channels=hidden_size,
                 kernel_size=1,
             )),
@@ -47,13 +53,19 @@ class Discriminator(nn.Module):
     def forward(
             self,
             x: Tensor,
+            c: Optional[Tensor],
     ):
         """
         :param x: float (batch_size, length)
+        :param c: float (batch_size, length)
         :return:
             output: float (batch_size, ?)
         """
-        x = x.unsqueeze(1)
+        if c is None:
+            x = x.unsqueeze(1)
+        else:
+            x = torch.stack([x, c], dim=1)
+
         x = self.head(x)
         x = self.convs(x)
         x = self.tail(x)
@@ -77,3 +89,18 @@ class Discriminator(nn.Module):
             stride=(1, 1, 1),
         )
         return ~(silence.all(dim=2))
+
+
+def create_discriminator(config: NetworkConfig):
+    if config.discriminator_type == DiscriminatorType.wavegan:
+        input_size = 1
+    elif config.discriminator_type == DiscriminatorType.cgan:
+        input_size = 2
+    else:
+        raise ValueError(config.discriminator_type)
+
+    return Discriminator(
+        input_size=input_size,
+        hidden_size=config.discriminator_hidden_size,
+        layer_num=config.discriminator_layer_num,
+    )
