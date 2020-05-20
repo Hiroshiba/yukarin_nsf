@@ -36,6 +36,7 @@ class SignWaveDataset(BaseWaveDataset):
             local_padding_length=local_padding_length,
             min_not_silence_length=0,
             f0_index=f0_index,
+            only_noise_source=False,
         )
         self.sampling_rate = sampling_rate
         self.local_scale = local_scale

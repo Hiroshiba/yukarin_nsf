@@ -61,11 +61,13 @@ class BaseWaveDataset(Dataset):
             local_padding_length: int,
             min_not_silence_length: int,
             f0_index: int,
+            only_noise_source: bool,
     ) -> None:
         self.sampling_length = sampling_length
         self.local_padding_length = local_padding_length
         self.min_not_silence_length = min_not_silence_length
         self.f0_index = f0_index
+        self.only_noise_source = only_noise_source
 
     @staticmethod
     def extract_input(
@@ -76,6 +78,7 @@ class BaseWaveDataset(Dataset):
             local_padding_length: int,
             min_not_silence_length: int,
             f0_index: int,
+            only_noise_source: bool,
             padding_value=0,
     ):
         """
@@ -140,6 +143,9 @@ class BaseWaveDataset(Dataset):
         else:
             log_f0 = local[:, f0_index]
 
+        if only_noise_source:
+            log_f0 = numpy.zeros_like(log_f0)
+
         source = generate_source(
             log_f0=log_f0,
             local_rate=int(local_data.rate),
@@ -173,6 +179,7 @@ class BaseWaveDataset(Dataset):
             local_padding_length=self.local_padding_length,
             min_not_silence_length=self.min_not_silence_length,
             f0_index=self.f0_index,
+            only_noise_source=self.only_noise_source,
         )
 
 
@@ -184,12 +191,14 @@ class WavesDataset(BaseWaveDataset):
             local_padding_length: int,
             min_not_silence_length: int,
             f0_index: int,
+            only_noise_source: bool,
     ) -> None:
         super().__init__(
             sampling_length=sampling_length,
             local_padding_length=local_padding_length,
             min_not_silence_length=min_not_silence_length,
             f0_index=f0_index,
+            only_noise_source=only_noise_source,
         )
         self.inputs = inputs
 
@@ -278,6 +287,7 @@ def create_dataset(config: DatasetConfig):
             local_padding_length=local_padding_length,
             min_not_silence_length=config.min_not_silence_length,
             f0_index=config.f0_index,
+            only_noise_source=config.only_noise_source,
         )
 
         if speaker_ids is not None:

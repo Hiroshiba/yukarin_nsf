@@ -15,6 +15,7 @@ class DatasetConfig:
     local_padding_length: int
     min_not_silence_length: int
     f0_index: int
+    only_noise_source: bool
     speaker_dict_path: Optional[str]
     speaker_size: Optional[int]
     seed: int
@@ -123,3 +124,6 @@ def backward_compatible(d: Dict[str, Any]):
     if 'discriminator_optimizer' not in d['train']:
         d['train']['discriminator_optimizer'] = None
     assert (d['network']['discriminator_type'] is None) == (d['train']['discriminator_optimizer'] is None)
+
+    if 'only_noise_source' not in d['dataset']:
+        d['dataset']['only_noise_source'] = False
