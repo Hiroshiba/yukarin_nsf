@@ -5,7 +5,7 @@ import numpy
 from acoustic_feature_extractor.data.spectrogram import to_melcepstrum
 from acoustic_feature_extractor.data.wave import Wave
 from pytorch_trainer import report
-from torch import nn, Tensor
+from torch import Tensor, nn
 
 from yukarin_nsf.generator import Generator
 

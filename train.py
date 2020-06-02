@@ -7,8 +7,7 @@ from yukarin_nsf.trainer import create_trainer
 
 
 def train(
-        config_yaml_path: Path,
-        output: Path,
+    config_yaml_path: Path, output: Path,
 ):
     with config_yaml_path.open() as f:
         d = yaml.safe_load(f)
@@ -17,8 +16,8 @@ def train(
     trainer.run()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('config_yaml_path', type=Path)
-    parser.add_argument('output', type=Path)
+    parser.add_argument("config_yaml_path", type=Path)
+    parser.add_argument("output", type=Path)
     train(**vars(parser.parse_args()))
