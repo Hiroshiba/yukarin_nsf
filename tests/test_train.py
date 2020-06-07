@@ -1,18 +1,24 @@
 import torch
 from retry import retry
-
 from tests.utility import SignWaveDataset, train_support
+
 from yukarin_nsf.config import ModelConfig
-from yukarin_nsf.model import Model, Networks, DiscriminatorModel, DiscriminatorInputType
+from yukarin_nsf.model import (
+    DiscriminatorInputType,
+    DiscriminatorModel,
+    Model,
+    Networks,
+)
 from yukarin_nsf.network.discriminator import Discriminator, DiscriminatorType
-from yukarin_nsf.network.predictor import Predictor, NeuralFilterType
+from yukarin_nsf.network.predictor import NeuralFilterType, Predictor
 
 
 def _create_model(
-        local_size: int,
-        local_scale: int,
-        speaker_size=0,
-        discriminator_type: DiscriminatorType=None,
+    local_size: int,
+    local_scale: int,
+    use_stft_weight: bool = False,
+    speaker_size=0,
+    discriminator_type: DiscriminatorType = None,
 ):
     networks = Networks(
         predictor=Predictor(
@@ -31,7 +37,9 @@ def _create_model(
             input_size=1 if discriminator_type == DiscriminatorType.wavegan else 2,
             hidden_size=16,
             layer_num=10,
-        ) if discriminator_type is not None else None,
+        )
+        if discriminator_type is not None
+        else None,
     )
 
     if discriminator_type is None:
@@ -42,31 +50,21 @@ def _create_model(
         discriminator_input_type = DiscriminatorInputType.cgan
     model_config = ModelConfig(
         eliminate_silence=True,
+        use_stft_weight=use_stft_weight,
         stft_config=[
-            dict(
-                fft_size=512,
-                hop_length=80,
-                window_length=320,
-            ),
-            dict(
-                fft_size=128,
-                hop_length=40,
-                window_length=80,
-            ),
-            dict(
-                fft_size=2048,
-                hop_length=640,
-                window_length=1920,
-            ),
+            dict(fft_size=512, hop_length=80, window_length=320,),
+            dict(fft_size=128, hop_length=40, window_length=80,),
+            dict(fft_size=2048, hop_length=640, window_length=1920,),
         ],
         discriminator_input_type=discriminator_input_type,
         adversarial_loss_scale=1,
     )
     model = Model(model_config=model_config, networks=networks, local_padding_length=0)
+    discriminator_model = None
     if discriminator_type is not None:
-        discriminator_model = DiscriminatorModel(model_config=model_config, networks=networks, local_padding_length=0)
-    else:
-        discriminator_model = None
+        discriminator_model = DiscriminatorModel(
+            model_config=model_config, networks=networks, local_padding_length=0
+        )
     return model, discriminator_model
 
 
@@ -81,10 +79,10 @@ def test_train():
     )
 
     def first_hook(o):
-        assert o['main/loss'].data > 2
+        assert o["main/loss"].data > 2
 
     def last_hook(o):
-        assert o['main/loss'].data < 2
+        assert o["main/loss"].data < 2
 
     iteration = 500
     train_support(
@@ -101,22 +99,49 @@ def test_train():
     # save model
     torch.save(
         model.predictor.state_dict(),
-        (
-            '/tmp/'
-            f'test_training'
-            f'-speaker_size=0'
-            f'-iteration={iteration}'
-            '.pth'
-        ),
+        ("/tmp/" f"test_training" f"-speaker_size=0" f"-iteration={iteration}" ".pth"),
+    )
+
+
+@retry(tries=10)
+def test_train_stft_weight():
+    model, _ = _create_model(local_size=1, local_scale=40, use_stft_weight=True)
+    dataset = SignWaveDataset(
+        sampling_length=16000,
+        sampling_rate=16000,
+        local_padding_length=0,
+        local_scale=40,
+    )
+
+    def first_hook(o):
+        assert o["main/loss"].data > 1
+
+    def last_hook(o):
+        assert o["main/loss"].data < 1
+
+    iteration = 500
+    train_support(
+        batch_size=8,
+        use_gpu=True,
+        model=model,
+        discriminator_model=None,
+        dataset=dataset,
+        iteration=iteration,
+        first_hook=first_hook,
+        last_hook=last_hook,
+    )
+
+    # save model
+    torch.save(
+        model.predictor.state_dict(),
+        ("/tmp/" f"test_training" f"-speaker_size=0" f"-iteration={iteration}" ".pth"),
     )
 
 
 @retry(tries=10)
 def test_train_discriminator():
     model, discriminator_model = _create_model(
-        local_size=1,
-        local_scale=40,
-        discriminator_type=DiscriminatorType.wavegan,
+        local_size=1, local_scale=40, discriminator_type=DiscriminatorType.wavegan,
     )
     dataset = SignWaveDataset(
         sampling_length=16000,
@@ -126,11 +151,11 @@ def test_train_discriminator():
     )
 
     def first_hook(o):
-        assert o['main/loss'].data > 3
-        assert 'discriminator/loss' in o
+        assert o["main/loss"].data > 3
+        assert "discriminator/loss" in o
 
     def last_hook(o):
-        assert o['main/loss'].data < 3
+        assert o["main/loss"].data < 3
 
     iteration = 500
     train_support(
@@ -148,11 +173,11 @@ def test_train_discriminator():
     torch.save(
         model.predictor.state_dict(),
         (
-            '/tmp/'
-            f'test_training'
-            f'-speaker_size=0'
-            f'-iteration={iteration}.pth'
-            f'-discriminator_type={DiscriminatorType.wavegan}'
+            "/tmp/"
+            f"test_training"
+            f"-speaker_size=0"
+            f"-iteration={iteration}.pth"
+            f"-discriminator_type={DiscriminatorType.wavegan}"
         ),
     )
 
@@ -160,9 +185,7 @@ def test_train_discriminator():
 @retry(tries=10)
 def test_train_conditional_discriminator():
     model, discriminator_model = _create_model(
-        local_size=1,
-        local_scale=40,
-        discriminator_type=DiscriminatorType.cgan,
+        local_size=1, local_scale=40, discriminator_type=DiscriminatorType.cgan,
     )
     dataset = SignWaveDataset(
         sampling_length=16000,
@@ -172,11 +195,11 @@ def test_train_conditional_discriminator():
     )
 
     def first_hook(o):
-        assert o['main/loss'].data > 3
-        assert 'discriminator/loss' in o
+        assert o["main/loss"].data > 3
+        assert "discriminator/loss" in o
 
     def last_hook(o):
-        assert o['main/loss'].data < 3
+        assert o["main/loss"].data < 3
 
     iteration = 500
     train_support(
@@ -194,10 +217,10 @@ def test_train_conditional_discriminator():
     torch.save(
         model.predictor.state_dict(),
         (
-            '/tmp/'
-            f'test_training'
-            f'-speaker_size=0'
-            f'-iteration={iteration}.pth'
-            f'-discriminator_type={DiscriminatorType.cgan}'
+            "/tmp/"
+            f"test_training"
+            f"-speaker_size=0"
+            f"-iteration={iteration}.pth"
+            f"-discriminator_type={DiscriminatorType.cgan}"
         ),
     )

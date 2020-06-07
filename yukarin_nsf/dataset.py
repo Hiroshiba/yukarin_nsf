@@ -2,12 +2,12 @@ import glob
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Union, Dict
+from typing import Dict, List, Union
 
 import numpy
 from acoustic_feature_extractor.data.sampling_data import SamplingData
 from acoustic_feature_extractor.data.wave import Wave
-from torch.utils.data import Dataset, ConcatDataset
+from torch.utils.data import ConcatDataset, Dataset
 
 from yukarin_nsf.config import DatasetConfig
 from yukarin_nsf.utility.dataset_utility import default_convert
@@ -34,52 +34,72 @@ class LazyInput:
         )
 
 
-def generate_source(log_f0: numpy.ndarray, local_rate: int, sampling_rate: int):
+def generate_source(
+    log_f0: numpy.ndarray, local_rate: int, harmonic_num: int, sampling_rate: int
+):
     f0 = numpy.exp(log_f0)
     f0[log_f0 == 0] = 0
 
-    f0 = numpy.repeat(f0, sampling_rate // local_rate)
+    f0 = numpy.repeat(f0, sampling_rate // local_rate)[:, numpy.newaxis]
     voiced = f0 != 0
 
+    signal = numpy.zeros(len(f0), dtype=numpy.float32)
     source = numpy.empty(len(f0), dtype=numpy.float32)
 
     points = numpy.where(voiced[1:] != voiced[:-1])[0] + 1
     for start, end in zip(numpy.r_[0, points], numpy.r_[points, len(f0)]):
         if voiced[start]:
-            r = numpy.random.uniform(-numpy.pi, numpy.pi)
-            source[start:end] = numpy.sin(2 * numpy.pi * numpy.cumsum(f0[start:end]) / sampling_rate + r) * 0.1
-            source[start:end] += numpy.random.randn(end - start) * 0.003
+            harmonics = numpy.dot(
+                f0[start:end], (numpy.arange(harmonic_num + 1) + 1)[numpy.newaxis, :]
+            )
+            r = numpy.random.uniform(-numpy.pi, numpy.pi, size=harmonic_num + 1)
+            signal[start:end] = (
+                numpy.mean(
+                    numpy.sin(
+                        2 * numpy.pi * numpy.cumsum(harmonics, axis=0) / sampling_rate
+                        + r
+                    ),
+                    axis=1,
+                )
+                * 0.1
+            )
+            source[start:end] = (
+                signal[start:end] + numpy.random.randn(end - start) * 0.003
+            )
         else:
             source[start:end] = numpy.random.randn(end - start) / 3 * 0.1
-    return source
+    return source, signal
 
 
 class BaseWaveDataset(Dataset):
     def __init__(
-            self,
-            sampling_length: int,
-            local_padding_length: int,
-            min_not_silence_length: int,
-            f0_index: int,
-            only_noise_source: bool,
+        self,
+        sampling_length: int,
+        local_padding_length: int,
+        min_not_silence_length: int,
+        f0_index: int,
+        harmonic_num: int,
+        only_noise_source: bool,
     ) -> None:
         self.sampling_length = sampling_length
         self.local_padding_length = local_padding_length
         self.min_not_silence_length = min_not_silence_length
         self.f0_index = f0_index
+        self.harmonic_num = harmonic_num
         self.only_noise_source = only_noise_source
 
     @staticmethod
     def extract_input(
-            sampling_length: int,
-            wave_data: Wave,
-            silence_data: SamplingData,
-            local_data: SamplingData,
-            local_padding_length: int,
-            min_not_silence_length: int,
-            f0_index: int,
-            only_noise_source: bool,
-            padding_value=0,
+        sampling_length: int,
+        wave_data: Wave,
+        silence_data: SamplingData,
+        local_data: SamplingData,
+        local_padding_length: int,
+        min_not_silence_length: int,
+        f0_index: int,
+        harmonic_num: int,
+        only_noise_source: bool,
+        padding_value=0,
     ):
         """
         :return:
@@ -94,7 +114,9 @@ class BaseWaveDataset(Dataset):
         l_scale = int(sr // local_data.rate)
 
         length = len(local_data.array) * l_scale
-        assert abs(length - len(wave_data.wave)) < l_scale * 4, f'{abs(length - len(wave_data.wave))} {l_scale}'
+        assert (
+            abs(length - len(wave_data.wave)) < l_scale * 4
+        ), f"{abs(length - len(wave_data.wave))} {l_scale}"
 
         assert local_padding_length % l_scale == 0
         l_pad = local_padding_length // l_scale
@@ -113,16 +135,18 @@ class BaseWaveDataset(Dataset):
             if (~silence).sum() >= min_not_silence_length:
                 break
         else:
-            raise Exception('cannot pick not silence data')
+            raise Exception("cannot pick not silence data")
 
-        wave = wave_data.wave[offset:offset + sl]
+        wave = wave_data.wave[offset : offset + sl]
 
         # local
         l_start, l_end = l_offset - l_pad, l_offset + l_sl + l_pad
         if l_start < 0 or l_end > l_length:
             shape = list(local_data.array.shape)
             shape[0] = l_sl + l_pad * 2
-            local = numpy.ones(shape=shape, dtype=local_data.array.dtype) * padding_value
+            local = (
+                numpy.ones(shape=shape, dtype=local_data.array.dtype) * padding_value
+            )
             if l_start < 0:
                 p_start = -l_start
                 l_start = 0
@@ -146,15 +170,17 @@ class BaseWaveDataset(Dataset):
         if only_noise_source:
             log_f0 = numpy.zeros_like(log_f0)
 
-        source = generate_source(
+        source, signal = generate_source(
             log_f0=log_f0,
             local_rate=int(local_data.rate),
             sampling_rate=sr,
+            harmonic_num=harmonic_num,
         )
-        source2 = generate_source(
+        source2, _ = generate_source(
             log_f0=log_f0,
             local_rate=int(local_data.rate),
             sampling_rate=sr,
+            harmonic_num=harmonic_num,
         )
 
         return dict(
@@ -163,13 +189,11 @@ class BaseWaveDataset(Dataset):
             local=local,
             source=source,
             source2=source2,
+            signal=signal,
         )
 
     def make_input(
-            self,
-            wave_data: Wave,
-            silence_data: SamplingData,
-            local_data: SamplingData,
+        self, wave_data: Wave, silence_data: SamplingData, local_data: SamplingData,
     ):
         return self.extract_input(
             sampling_length=self.sampling_length,
@@ -179,25 +203,28 @@ class BaseWaveDataset(Dataset):
             local_padding_length=self.local_padding_length,
             min_not_silence_length=self.min_not_silence_length,
             f0_index=self.f0_index,
+            harmonic_num=self.harmonic_num,
             only_noise_source=self.only_noise_source,
         )
 
 
 class WavesDataset(BaseWaveDataset):
     def __init__(
-            self,
-            inputs: List[Union[Input, LazyInput]],
-            sampling_length: int,
-            local_padding_length: int,
-            min_not_silence_length: int,
-            f0_index: int,
-            only_noise_source: bool,
+        self,
+        inputs: List[Union[Input, LazyInput]],
+        sampling_length: int,
+        local_padding_length: int,
+        min_not_silence_length: int,
+        f0_index: int,
+        harmonic_num: int,
+        only_noise_source: bool,
     ) -> None:
         super().__init__(
             sampling_length=sampling_length,
             local_padding_length=local_padding_length,
             min_not_silence_length=min_not_silence_length,
             f0_index=f0_index,
+            harmonic_num=harmonic_num,
             only_noise_source=only_noise_source,
         )
         self.inputs = inputs
@@ -210,11 +237,13 @@ class WavesDataset(BaseWaveDataset):
         if isinstance(input, LazyInput):
             input = input.generate()
 
-        return default_convert(self.make_input(
-            wave_data=input.wave,
-            silence_data=input.silence,
-            local_data=input.local,
-        ))
+        return default_convert(
+            self.make_input(
+                wave_data=input.wave,
+                silence_data=input.silence,
+                local_data=input.local,
+            )
+        )
 
 
 class SpeakerWavesDataset(Dataset):
@@ -228,7 +257,7 @@ class SpeakerWavesDataset(Dataset):
 
     def __getitem__(self, i):
         d = self.wave_dataset[i]
-        d['speaker_id'] = numpy.array(self.speaker_ids[i], dtype=numpy.long)
+        d["speaker_id"] = numpy.array(self.speaker_ids[i], dtype=numpy.long)
         return default_convert(d)
 
 
@@ -237,14 +266,21 @@ def create_dataset(config: DatasetConfig):
     fn_list = sorted(wave_paths.keys())
     assert len(fn_list) > 0
 
-    silence_paths = {Path(p).stem: Path(p) for p in glob.glob(str(config.input_silence_glob))}
+    silence_paths = {
+        Path(p).stem: Path(p) for p in glob.glob(str(config.input_silence_glob))
+    }
     assert set(fn_list) == set(silence_paths.keys())
 
-    local_paths = {Path(p).stem: Path(p) for p in glob.glob(str(config.input_local_glob))}
+    local_paths = {
+        Path(p).stem: Path(p) for p in glob.glob(str(config.input_local_glob))
+    }
     assert set(fn_list) == set(local_paths.keys())
 
+    speaker_ids = None
     if config.speaker_dict_path is not None:
-        fn_each_speaker: Dict[str, List[str]] = json.load(open(config.speaker_dict_path))
+        fn_each_speaker: Dict[str, List[str]] = json.load(
+            open(config.speaker_dict_path)
+        )
         assert config.speaker_size == len(fn_each_speaker)
 
         speaker_ids = {
@@ -253,13 +289,13 @@ def create_dataset(config: DatasetConfig):
             for fn in fns
         }
         assert set(fn_list).issubset(set(speaker_ids.keys()))
-    else:
-        speaker_ids = None
 
     numpy.random.RandomState(config.seed).shuffle(fn_list)
 
     num_test = config.num_test
-    num_train = config.num_train if config.num_train is not None else len(fn_list) - num_test
+    num_train = (
+        config.num_train if config.num_train is not None else len(fn_list) - num_test
+    )
 
     trains = fn_list[num_test:][:num_train]
     tests = fn_list[:num_test]
@@ -279,7 +315,9 @@ def create_dataset(config: DatasetConfig):
             local_padding_length = config.local_padding_length
         else:
             sampling_length = int(config.evaluate_time_second * config.sampling_rate)
-            local_padding_length = int(config.evaluate_local_padding_time_second * config.sampling_rate)
+            local_padding_length = int(
+                config.evaluate_local_padding_time_second * config.sampling_rate
+            )
 
         dataset = WavesDataset(
             inputs=inputs,
@@ -287,13 +325,13 @@ def create_dataset(config: DatasetConfig):
             local_padding_length=local_padding_length,
             min_not_silence_length=config.min_not_silence_length,
             f0_index=config.f0_index,
+            harmonic_num=config.harmonic_num,
             only_noise_source=config.only_noise_source,
         )
 
         if speaker_ids is not None:
             dataset = SpeakerWavesDataset(
-                wave_dataset=dataset,
-                speaker_ids=[speaker_ids[fn] for fn in fns],
+                wave_dataset=dataset, speaker_ids=[speaker_ids[fn] for fn in fns],
             )
 
         if for_evaluate:

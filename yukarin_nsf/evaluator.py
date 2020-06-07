@@ -19,10 +19,10 @@ def _mcd(x: numpy.ndarray, y: numpy.ndarray) -> float:
 
 
 def calc_mcd(
-        path1: Optional[Path] = None,
-        path2: Optional[Path] = None,
-        wave1: Optional[Wave] = None,
-        wave2: Optional[Wave] = None,
+    path1: Optional[Path] = None,
+    path2: Optional[Path] = None,
+    wave1: Optional[Wave] = None,
+    wave2: Optional[Wave] = None,
 ):
     wave1 = Wave.load(path1) if wave1 is None else wave1
     wave2 = Wave.load(path2) if wave2 is None else wave2
@@ -55,10 +55,10 @@ def calc_mcd(
 
 class GenerateEvaluator(nn.Module):
     def __init__(
-            self,
-            generator: Generator,
-            time_length: float,
-            local_padding_time_length: float,
+        self,
+        generator: Generator,
+        time_length: float,
+        local_padding_time_length: float,
     ) -> None:
         super().__init__()
         self.generator = generator
@@ -66,20 +66,20 @@ class GenerateEvaluator(nn.Module):
         self.local_padding_time_length = local_padding_time_length
 
     def __call__(
-            self,
-            wave: Tensor,
-            silence: Tensor,
-            local: Tensor,
-            source: Tensor,
-            source2: Tensor,
-            speaker_id: Tensor = None,
+        self,
+        wave: Tensor,
+        silence: Tensor,
+        local: Tensor,
+        source: Tensor,
+        source2: Tensor,
+        signal: Tensor,
+        speaker_id: Tensor = None,
     ):
         batch_size = len(wave)
 
-        if self.local_padding_time_length > 0:
-            local_padding_length = int(self.generator.sampling_rate * self.local_padding_time_length)
-        else:
-            local_padding_length = None
+        local_padding_length = int(
+            self.generator.sampling_rate * self.local_padding_time_length
+        )
 
         output = self.generator.generate(
             local=local,
@@ -95,7 +95,7 @@ class GenerateEvaluator(nn.Module):
             mcd_list.append(mcd)
 
         scores = {
-            'mcd': (numpy.mean(mcd_list), batch_size),
+            "mcd": (numpy.mean(mcd_list), batch_size),
         }
 
         report(scores, self)
