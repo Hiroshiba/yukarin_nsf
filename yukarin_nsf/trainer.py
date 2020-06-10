@@ -6,15 +6,15 @@ from typing import Any, Dict
 import torch
 import yaml
 from pytorch_trainer.iterators import MultiprocessIterator
-from pytorch_trainer.training import extensions, Trainer
+from pytorch_trainer.training import Trainer, extensions
 from tensorboardX import SummaryWriter
-from torch import optim, nn
+from torch import nn, optim
 
 from yukarin_nsf.config import Config
 from yukarin_nsf.dataset import create_dataset
 from yukarin_nsf.evaluator import GenerateEvaluator
 from yukarin_nsf.generator import Generator
-from yukarin_nsf.model import Model, DiscriminatorModel, create_network
+from yukarin_nsf.model import DiscriminatorModel, Model, create_network
 from yukarin_nsf.updater import Updater
 from yukarin_nsf.utility.tensorboard_extension import TensorboardReport
 

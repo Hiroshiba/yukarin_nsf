@@ -40,7 +40,7 @@ def generate_source(
     f0 = numpy.exp(log_f0)
     f0[log_f0 == 0] = 0
 
-    f0 = numpy.repeat(f0, sampling_rate // local_rate)[:, numpy.newaxis]
+    f0 = numpy.repeat(f0, sampling_rate // local_rate)
     voiced = f0 != 0
 
     signal = numpy.zeros(len(f0), dtype=numpy.float32)
@@ -49,8 +49,8 @@ def generate_source(
     points = numpy.where(voiced[1:] != voiced[:-1])[0] + 1
     for start, end in zip(numpy.r_[0, points], numpy.r_[points, len(f0)]):
         if voiced[start]:
-            harmonics = numpy.dot(
-                f0[start:end], (numpy.arange(harmonic_num + 1) + 1)[numpy.newaxis, :]
+            harmonics = numpy.stack(
+                [f0[start:end] * (i + 1) for i in range(harmonic_num + 1)], axis=1
             )
             r = numpy.random.uniform(-numpy.pi, numpy.pi, size=harmonic_num + 1)
             signal[start:end] = (
