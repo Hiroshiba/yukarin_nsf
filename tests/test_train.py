@@ -114,10 +114,10 @@ def test_train_stft_weight():
     )
 
     def first_hook(o):
-        assert o["main/loss"].data > 1
+        assert o["main/loss"].data > 2
 
     def last_hook(o):
-        assert o["main/loss"].data < 1
+        assert o["main/loss"].data < 2
 
     iteration = 500
     train_support(

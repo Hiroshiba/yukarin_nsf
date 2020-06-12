@@ -83,17 +83,17 @@ def amplitude_distance(
         if weight is not None:
             weight = weight.transpose(1, 2)[mask]
 
-    if weight is not None:
-        weight = weight.unsqueeze(-1).expand_as(x)
-        x *= weight
-        t *= weight
-
     x_real, x_image = x[..., 0], x[..., 1]
     t_real, t_image = t[..., 0], t[..., 1]
 
     x_amplitude = x_real ** 2 + x_image ** 2 + epsilon
     t_amplitude = t_real ** 2 + t_image ** 2 + epsilon
-    return torch.mean((torch.log(x_amplitude) - torch.log(t_amplitude)) ** 2) / 2
+    diff = (torch.log(x_amplitude) - torch.log(t_amplitude)) ** 2
+
+    if weight is not None:
+        diff *= 1 + weight
+
+    return torch.mean(diff) / 2
 
 
 class Model(nn.Module):
