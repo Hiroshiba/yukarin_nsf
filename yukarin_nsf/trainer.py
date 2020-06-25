@@ -4,11 +4,13 @@ from pathlib import Path
 from typing import Any, Dict
 
 import torch
+import torch_optimizer
 import yaml
 from pytorch_trainer.iterators import MultiprocessIterator
 from pytorch_trainer.training import Trainer, extensions
 from tensorboardX import SummaryWriter
 from torch import nn, optim
+from torch.optim.optimizer import Optimizer
 
 from yukarin_nsf.config import Config
 from yukarin_nsf.dataset import create_dataset
@@ -24,9 +26,19 @@ def create_optimizer(optimizer_config: Dict[str, Any], model: nn.Module):
     n = cp.pop("name").lower()
 
     if n == "adam":
-        optimizer = optim.Adam(model.parameters(), **cp)
+        optimizer: Optimizer = optim.Adam(model.parameters(), **cp)
     elif n == "sgd":
         optimizer = optim.SGD(model.parameters(), **cp)
+    elif n == "adabound":
+        optimizer = torch_optimizer.AdaBound(model.parameters(), **cp)
+    elif n == "diffgrad":
+        optimizer = torch_optimizer.DiffGrad(model.parameters(), **cp)
+    elif n == "qhadam":
+        optimizer = torch_optimizer.QHAdam(model.parameters(), **cp)
+    elif n == "radam":
+        optimizer = torch_optimizer.RAdam(model.parameters(), **cp)
+    elif n == "yogi":
+        optimizer = torch_optimizer.Yogi(model.parameters(), **cp)
     else:
         raise ValueError(n)
 
@@ -135,15 +147,15 @@ def create_trainer(
         networks.predictor, filename="predictor_{.updater.iteration}.pth"
     )
     trainer.extend(ext, trigger=trigger_snapshot)
-    ext = extensions.snapshot_object(
-        trainer, filename="trainer_{.updater.iteration}.pth"
-    )
-    trainer.extend(ext, trigger=trigger_snapshot)
-    if networks.discriminator is not None:
-        ext = extensions.snapshot_object(
-            networks.discriminator, filename="discriminator_{.updater.iteration}.pth"
-        )
-        trainer.extend(ext, trigger=trigger_snapshot)
+    # ext = extensions.snapshot_object(
+    #     trainer, filename="trainer_{.updater.iteration}.pth"
+    # )
+    # trainer.extend(ext, trigger=trigger_snapshot)
+    # if networks.discriminator is not None:
+    #     ext = extensions.snapshot_object(
+    #         networks.discriminator, filename="discriminator_{.updater.iteration}.pth"
+    #     )
+    #     trainer.extend(ext, trigger=trigger_snapshot)
 
     trainer.extend(extensions.FailOnNonNumber(), trigger=trigger_log)
     trainer.extend(extensions.LogReport(trigger=trigger_log))

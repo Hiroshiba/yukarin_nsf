@@ -1,9 +1,11 @@
 numpy
 torch
+numba==0.48.0
 tqdm
 retry
 pytest
 pyyaml
 tensorboardX
+torch-optimizer
 git+https://github.com/Hiroshiba/pytorch-trainer@1.2.0
 git+https://github.com/Hiroshiba/acoustic_feature_extractor
