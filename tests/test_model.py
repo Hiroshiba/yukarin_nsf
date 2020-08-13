@@ -29,6 +29,7 @@ def sampling_rate():
 def test_stft_weight(log_f0: numpy.ndarray, local_rate: int, sampling_rate: int):
     _, signal = generate_source(
         log_f0=log_f0,
+        volume=None,
         local_rate=local_rate,
         harmonic_num=0,
         sampling_rate=sampling_rate,

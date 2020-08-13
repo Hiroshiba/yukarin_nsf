@@ -10,6 +10,11 @@ def log_f0():
 
 
 @pytest.fixture()
+def volume():
+    return numpy.array([0.1, 0.2, 0.3, 0.4], dtype=numpy.float32)
+
+
+@pytest.fixture()
 def local_rate():
     return 8000 / 128
 
@@ -27,6 +32,7 @@ def sampling_rate():
 def test_generate(log_f0: numpy.ndarray, local_rate: int, sampling_rate: int):
     source, signal = generate_source(
         log_f0=log_f0,
+        volume=None,
         local_rate=local_rate,
         harmonic_num=0,
         sampling_rate=sampling_rate,
@@ -54,11 +60,30 @@ def test_generate(log_f0: numpy.ndarray, local_rate: int, sampling_rate: int):
             assert numpy.argmax(amp) == expect
 
 
+def test_generate_volume(
+    log_f0: numpy.ndarray, volume: numpy.ndarray, local_rate: int, sampling_rate: int
+):
+    source, signal = generate_source(
+        log_f0=log_f0,
+        volume=volume,
+        local_rate=local_rate,
+        harmonic_num=0,
+        sampling_rate=sampling_rate,
+    )
+
+    max_values = []
+    for x in numpy.split(source, len(log_f0)):
+        max_values.append(x.max())
+
+    assert numpy.all(numpy.argsort(volume) == numpy.argsort(max_values))
+
+
 def test_generate_harmonic(
     log_f0: numpy.ndarray, local_rate: int, harmonic_num: int, sampling_rate: int
 ):
     source, signal = generate_source(
         log_f0=log_f0,
+        volume=None,
         local_rate=local_rate,
         harmonic_num=harmonic_num,
         sampling_rate=sampling_rate,

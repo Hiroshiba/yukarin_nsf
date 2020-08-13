@@ -2,7 +2,7 @@ import glob
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 import numpy
 from acoustic_feature_extractor.data.sampling_data import SamplingData
@@ -35,7 +35,11 @@ class LazyInput:
 
 
 def generate_source(
-    log_f0: numpy.ndarray, local_rate: int, harmonic_num: int, sampling_rate: int
+    log_f0: numpy.ndarray,
+    volume: Optional[numpy.ndarray],
+    local_rate: int,
+    harmonic_num: int,
+    sampling_rate: int,
 ):
     f0 = numpy.exp(log_f0)
     f0[log_f0 == 0] = 0
@@ -68,6 +72,11 @@ def generate_source(
             )
         else:
             source[start:end] = numpy.random.randn(end - start) / 3 * 0.1
+
+    if volume is not None:
+        volume = numpy.repeat(volume, sampling_rate // local_rate)
+        source *= 10 * volume
+
     return source, signal
 
 
@@ -78,6 +87,7 @@ class BaseWaveDataset(Dataset):
         local_padding_length: int,
         min_not_silence_length: int,
         f0_index: int,
+        volume_index: Optional[int],
         harmonic_num: int,
         only_noise_source: bool,
     ) -> None:
@@ -85,6 +95,7 @@ class BaseWaveDataset(Dataset):
         self.local_padding_length = local_padding_length
         self.min_not_silence_length = min_not_silence_length
         self.f0_index = f0_index
+        self.volume_index = volume_index
         self.harmonic_num = harmonic_num
         self.only_noise_source = only_noise_source
 
@@ -97,6 +108,7 @@ class BaseWaveDataset(Dataset):
         local_padding_length: int,
         min_not_silence_length: int,
         f0_index: int,
+        volume_index: Optional[int],
         harmonic_num: int,
         only_noise_source: bool,
         padding_value=0,
@@ -170,14 +182,23 @@ class BaseWaveDataset(Dataset):
         if only_noise_source:
             log_f0 = numpy.zeros_like(log_f0)
 
+        volume = None
+        if volume_index is not None:
+            if l_pad > 0:
+                volume = local[l_pad:-l_pad, volume_index]
+            else:
+                volume = local[:, volume_index]
+
         source, signal = generate_source(
             log_f0=log_f0,
+            volume=volume,
             local_rate=int(local_data.rate),
             sampling_rate=sr,
             harmonic_num=harmonic_num,
         )
         source2, _ = generate_source(
             log_f0=log_f0,
+            volume=volume,
             local_rate=int(local_data.rate),
             sampling_rate=sr,
             harmonic_num=harmonic_num,
@@ -203,6 +224,7 @@ class BaseWaveDataset(Dataset):
             local_padding_length=self.local_padding_length,
             min_not_silence_length=self.min_not_silence_length,
             f0_index=self.f0_index,
+            volume_index=self.volume_index,
             harmonic_num=self.harmonic_num,
             only_noise_source=self.only_noise_source,
         )
@@ -216,6 +238,7 @@ class WavesDataset(BaseWaveDataset):
         local_padding_length: int,
         min_not_silence_length: int,
         f0_index: int,
+        volume_index: Optional[int],
         harmonic_num: int,
         only_noise_source: bool,
     ) -> None:
@@ -224,6 +247,7 @@ class WavesDataset(BaseWaveDataset):
             local_padding_length=local_padding_length,
             min_not_silence_length=min_not_silence_length,
             f0_index=f0_index,
+            volume_index=volume_index,
             harmonic_num=harmonic_num,
             only_noise_source=only_noise_source,
         )
@@ -325,6 +349,7 @@ def create_dataset(config: DatasetConfig):
             local_padding_length=local_padding_length,
             min_not_silence_length=config.min_not_silence_length,
             f0_index=config.f0_index,
+            volume_index=config.volume_index,
             harmonic_num=config.harmonic_num,
             only_noise_source=config.only_noise_source,
         )

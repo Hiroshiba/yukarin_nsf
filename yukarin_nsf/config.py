@@ -15,6 +15,7 @@ class DatasetConfig:
     local_padding_length: int
     min_not_silence_length: int
     f0_index: int
+    volume_index: Optional[int]
     harmonic_num: int
     only_noise_source: bool
     speaker_dict_path: Optional[str]
@@ -145,3 +146,6 @@ def backward_compatible(d: Dict[str, Any]):
 
     if "use_stft_weight" not in d["model"]:
         d["model"]["use_stft_weight"] = False
+
+    if "volume_index" not in d["dataset"]:
+        d["dataset"]["volume_index"] = None
